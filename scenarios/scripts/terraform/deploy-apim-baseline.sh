@@ -2,26 +2,26 @@
 
 set -e
 
-script_dir="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
 
 # if the script is run with -y flag, it will not prompt for confirmation
 if [[ $1 == "-y" ]]; then
-	auto_confirm=true
+  auto_confirm=true
 fi
 
 if [[ -f "$script_dir/../../.env" ]]; then
-	echo "Loading .env"
-	source "$script_dir/../../.env"
+  echo "Loading .env"
+  source "$script_dir/../../.env"
 fi
 
 if [[ ${#RANDOM_IDENTIFIER} -eq 0 ]]; then
   chars="abcdefghijklmnopqrstuvwxyz"
   random_string=""
   for _ in {1..3}; do
-      random_char="${chars:RANDOM%${#chars}:1}"
-      random_string+="$random_char"
+    random_char="${chars:RANDOM%${#chars}:1}"
+    random_string+="$random_char"
   done
-  echo "RANDOM_IDENTIFIER='$random_string'" >> "$script_dir/../../.env"
+  echo "RANDOM_IDENTIFIER='$random_string'" >>"$script_dir/../../.env"
 else
   random_string="${RANDOM_IDENTIFIER}"
 fi
@@ -83,10 +83,8 @@ else
   cert_pwd=$(CERT_PWD)
 fi
 
-
-
 ### VALIDATE IF AZ LOGIN IS REQUIRED, SHOW THE SUBSCRIPTION AND CONFIRM IF WANT TO CONTINUE
-az account show > /dev/null
+az account show >/dev/null
 if [ $? -ne 0 ]; then
   echo "You need to login to Azure CLI. Run 'az login' and try again."
   exit 6
@@ -96,21 +94,20 @@ echo "Using subscription:"
 az account show --query "{subscriptionId:id, subscriptionName:name}" --output table
 
 if [[ $auto_confirm == true ]]; then
-	echo "auto-confirmation enabled ... continuing"
+  echo "auto-confirmation enabled ... continuing"
 else
-	echo "Do you want to continue? (y/n)"
-	read -r response
-	if [[ ! $response =~ ^[Yy]$ ]]; then
-		echo "Exiting..."
-		exit 6
-	fi
+  echo "Do you want to continue? (y/n)"
+  read -r response
+  if [[ ! $response =~ ^[Yy]$ ]]; then
+    echo "Exiting..."
+    exit 6
+  fi
 fi
-
 
 # creating tfvars
 # create tfvars
 echo "Creating terraform variables file..."
-cat << EOF > "$script_dir/../../apim-baseline/terraform/${ENVIRONMENT_TAG}.tfvars"
+cat <<EOF >"$script_dir/../../apim-baseline/terraform/${ENVIRONMENT_TAG}.tfvars"
 location           	= "${AZURE_LOCATION}"
 workloadName       	= "${RESOURCE_NAME_PREFIX}"
 environment        	= "${ENVIRONMENT_TAG}"
@@ -132,7 +129,6 @@ echo "=="
 echo "== Starting terraform deployment baseline"
 echo "=="
 
-
 # Delete local state files
 echo "== deleting local state files"
 rm -rf .terraform
@@ -140,30 +136,42 @@ rm -f terraform.lock.hcl
 rm -f terraform.tfstate
 rm -f terraform.tfstate.backup
 
-
 terraform init \
-	-backend-config="${ENVIRONMENT_TAG}-backend.hcl" \
-	-backend-config="key=${ENVIRONMENT_TAG}-baseline-lza.tfstate"
+  -backend-config="${ENVIRONMENT_TAG}-backend.hcl" \
+  -backend-config="key=${ENVIRONMENT_TAG}-baseline-lza.tfstate"
 
 echo "Creating Terraform plan..."
 terraform plan -var-file="${ENVIRONMENT_TAG}.tfvars" -out="${ENVIRONMENT_TAG}.tfplan"
 echo "Terraform plan created"
 
 # validate if wants to proceed
-if [[ $auto_confirm == true ]]; then
-	echo "auto-confirmation enabled ... continuing"
-	response="y"
+
+echo "Do you want to DESTROY THE INFRASTRUCTURE? (y/n)"
+read -r responseDestroy
+
+if [[ $responseDestroy =~ ^[Yy]$ ]]; then
+  echo "Destroying INFRASTRUCTURE..."
+  terraform destroy -var-file="${ENVIRONMENT_TAG}.tfvars"
 else
-	echo "Do you want to create it? (y/n)"
-	read -r response
+  echo "Exiting..."
+  exit 6
+fi
+exit 6
+
+if [[ $auto_confirm == true ]]; then
+  echo "auto-confirmation enabled ... continuing"
+  response="y"
+else
+  echo "Do you want to create it? (y/n)"
+  read -r response
 fi
 
 if [[ $response =~ ^[Yy]$ ]]; then
-	echo "Applying Terraform plan..."
-	terraform apply "${ENVIRONMENT_TAG}.tfplan"
+  echo "Applying Terraform plan..."
+  terraform apply "${ENVIRONMENT_TAG}.tfplan"
 else
-	echo "Exiting..."
-	exit 6
+  echo "Exiting..."
+  exit 6
 fi
 
 echo "== Completed terraform deployment"
@@ -185,14 +193,14 @@ TOKEN=$(az account get-access-token --query accessToken --output tsv)
 
 # get the subscription id based on the subscription display name
 API_SUBSCRIPTION_ID=$(curl -s -S -H "Authorization: Bearer $TOKEN" \
-	-H "Content-Type: application/json" \
-	"https://management.azure.com/subscriptions/$SUBSCRIPTION_ID/resourceGroups/$APIM_RESOURCE_GROUP/providers/Microsoft.ApiManagement/service/$APIM_SERVICE_NAME/subscriptions?api-version=2022-08-01" | jq -r --arg API_SUBSCRIPTION_NAME "$API_SUBSCRIPTION_NAME" '.value[] | select(.properties.displayName == $API_SUBSCRIPTION_NAME) | .name' )
+  -H "Content-Type: application/json" \
+  "https://management.azure.com/subscriptions/$SUBSCRIPTION_ID/resourceGroups/$APIM_RESOURCE_GROUP/providers/Microsoft.ApiManagement/service/$APIM_SERVICE_NAME/subscriptions?api-version=2022-08-01" | jq -r --arg API_SUBSCRIPTION_NAME "$API_SUBSCRIPTION_NAME" '.value[] | select(.properties.displayName == $API_SUBSCRIPTION_NAME) | .name')
 
 # Call the Azure REST API to get subscription keys
 output=$(curl -s -S -X POST -H "Authorization: Bearer $TOKEN" \
-	-H "Content-Type: application/json" \
-	-H "Content-Length: 0" \
-	"https://management.azure.com/subscriptions/$SUBSCRIPTION_ID/resourceGroups/$APIM_RESOURCE_GROUP/providers/Microsoft.ApiManagement/service/$APIM_SERVICE_NAME/subscriptions/$API_SUBSCRIPTION_ID/listSecrets?api-version=2022-08-01")
+  -H "Content-Type: application/json" \
+  -H "Content-Length: 0" \
+  "https://management.azure.com/subscriptions/$SUBSCRIPTION_ID/resourceGroups/$APIM_RESOURCE_GROUP/providers/Microsoft.ApiManagement/service/$APIM_SERVICE_NAME/subscriptions/$API_SUBSCRIPTION_ID/listSecrets?api-version=2022-08-01")
 
 # Extract the subscription keys
 PRIMARY_KEY=$(echo "$output" | jq -r '.primaryKey')
